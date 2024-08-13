@@ -3,6 +3,24 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <string>
+#include "dns_message.hpp"
+
+enum FLAGS {
+    RESPONSE_FLAG = (1 << 15),
+};
+
+void create_response(DNS_Message& dns_message) {
+    dns_message.ID = 1234;
+    dns_message.FLAGS = RESPONSE_FLAG;
+    dns_message.QDCOUNT = 0;
+    dns_message.ANCOUNT = 0;
+    dns_message.NSCOUNT = 0;
+    dns_message.ARCOUNT = 0;
+
+    dns_message.to_network_order();
+}
+
 
 int main() {
     // Flush after every std::cout / std::cerr
@@ -53,11 +71,12 @@ int main() {
         buffer[bytesRead] = '\0';
         std::cout << "Received " << bytesRead << " bytes: " << buffer << std::endl;
 
-        // Create an empty response
-        char response[1] = { '\0' };
+        // Create the response
+        DNS_Message response;
+        create_response(response);
 
         // Send response
-        if (sendto(udpSocket, response, sizeof(response), 0, reinterpret_cast<struct sockaddr*>(&clientAddress), sizeof(clientAddress)) == -1) {
+        if (sendto(udpSocket, &response, sizeof(response), 0, reinterpret_cast<struct sockaddr*>(&clientAddress), sizeof(clientAddress)) == -1) {
             perror("Failed to send response");
         }
     }
