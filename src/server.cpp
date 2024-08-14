@@ -14,26 +14,36 @@ void create_response(DNS_Message& dns_message) {
     dns_message.header.ID = 1234;
     dns_message.header.FLAGS = RESPONSE_FLAG;
     dns_message.header.QDCOUNT = 1;
-    dns_message.header.ANCOUNT = 0;
+    dns_message.header.ANCOUNT = 1;
     dns_message.header.NSCOUNT = 0;
     dns_message.header.ARCOUNT = 0;
 
     std::string first_domain = "codecrafters";
-    dns_message.question.NAME.push_back((uint8_t)first_domain.size());
+    int index{0};
+    dns_message.question.NAME[index++] = (uint8_t)first_domain.size();
     for(char c : first_domain) {
-        dns_message.question.NAME.push_back(c);
+        dns_message.question.NAME[index] = c;
+        index++;
     }
 
     std::string second_domain = "io";
-    dns_message.question.NAME.push_back((uint8_t)second_domain.size());
+    dns_message.question.NAME[index++] = (uint8_t)second_domain.size();
     for(char c : second_domain) {
-        dns_message.question.NAME.push_back(c);
+        dns_message.question.NAME[index] = c;
+        index++;
     }
-    dns_message.question.NAME.push_back(0);
+    dns_message.question.NAME[index] = 0;
     
     dns_message.question.CLASS = 1;
     dns_message.question.TYPE = 1;
 
+    std::copy(dns_message.question.NAME, dns_message.question.NAME + sizeof(dns_message.question.NAME), dns_message.answer.NAME);
+    dns_message.answer.TYPE = 1;
+    dns_message.answer.CLASS = 1;
+    dns_message.answer.TTL = 60;
+    dns_message.answer.RDLENGTH = 4;
+    dns_message.answer.RDATA = 8888;
+    
     dns_message.to_network_order();
 }
 
@@ -90,14 +100,9 @@ int main() {
         // Create the response
         DNS_Message response;
         create_response(response);
-        
-        char responseBuffer[sizeof(response.header) + response.question.NAME.size()  + 4];
-        std::copy((const char*) &response.header, (const char*) &response.header + sizeof(response.header), responseBuffer);
-        std::copy(response.question.NAME.begin(), response.question.NAME.end(), responseBuffer + sizeof(response.header));
-        responseBuffer[sizeof(response.header) + response.question.NAME.size()] = 0;
-        responseBuffer[sizeof(response.header) + response.question.NAME.size() + 1] = 1;
-        responseBuffer[sizeof(response.header) + response.question.NAME.size() + 2] = 0;
-        responseBuffer[sizeof(response.header) + response.question.NAME.size() + 3] = 1;
+
+        char responseBuffer[sizeof(response)];
+        std::copy((const char*) &response, (const char*) &response + sizeof(response), responseBuffer);
         
         // Send response
         if (sendto(udpSocket, &responseBuffer, sizeof(responseBuffer), 0, reinterpret_cast<struct sockaddr*>(&clientAddress), sizeof(clientAddress)) == -1) {
