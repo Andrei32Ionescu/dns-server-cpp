@@ -4,15 +4,32 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <string>
+#include <bitset>
 #include "dns_message.hpp"
 
 enum FLAGS {
-    RESPONSE_FLAG = (1 << 15),
+    QR_FLAG = (1 << 15),
+    OPCODE_FLAG = (15 << 11),
+    RCODE_FLAG = (4),
+    RD_FLAG = (1 << 8),
 };
 
-void create_response(DNS_Message& dns_message) {
-    dns_message.header.ID = 1234;
-    dns_message.header.FLAGS = RESPONSE_FLAG;
+DNS_Message create_response(char buffer[]) {
+    uint16_t header_ID = uint16_t ((uint16_t (buffer[0] << 8) | buffer[1]));
+    uint16_t request_flags = uint16_t ((buffer[2] << 8) | buffer[3]);
+    uint16_t opcode = (request_flags << 1) >> 12;
+    uint16_t response_flag = QR_FLAG | (opcode << 11);
+    
+    if(request_flags & RD_FLAG) {
+        response_flag |= RD_FLAG;
+    }   
+    if(opcode != 0) {
+        response_flag = response_flag | RCODE_FLAG;
+
+    }
+    DNS_Message dns_message;
+    //dns_message.header.ID = header_ID;
+    dns_message.header.FLAGS = response_flag;
     dns_message.header.QDCOUNT = 1;
     dns_message.header.ANCOUNT = 1;
     dns_message.header.NSCOUNT = 0;
@@ -45,8 +62,8 @@ void create_response(DNS_Message& dns_message) {
     dns_message.answer.RDATA = 8888;
     
     dns_message.to_network_order();
+    return dns_message;
 }
-
 
 int main() {
     // Flush after every std::cout / std::cerr
@@ -98,12 +115,13 @@ int main() {
         std::cout << "Received " << bytesRead << " bytes: " << buffer << std::endl;
 
         // Create the response
-        DNS_Message response;
-        create_response(response);
+        DNS_Message response = create_response(buffer);
 
-        char responseBuffer[sizeof(response)];
+        uint8_t responseBuffer[sizeof(response)];
         std::copy((const char*) &response, (const char*) &response + sizeof(response), responseBuffer);
-        
+        // TODO: find out why copying the ID using the above method is wrong and the below method is correct
+        std::copy(buffer, buffer + 2, responseBuffer);
+
         // Send response
         if (sendto(udpSocket, &responseBuffer, sizeof(responseBuffer), 0, reinterpret_cast<struct sockaddr*>(&clientAddress), sizeof(clientAddress)) == -1) {
             perror("Failed to send response");
