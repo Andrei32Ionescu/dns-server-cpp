@@ -25,43 +25,26 @@ DNS_Message create_response(char buffer[]) {
     }   
     if(opcode != 0) {
         response_flag = response_flag | RCODE_FLAG;
-
     }
+
     DNS_Message dns_message;
-    //dns_message.header.ID = header_ID;
+    dns_message.header.ID = header_ID;
     dns_message.header.FLAGS = response_flag;
-    dns_message.header.QDCOUNT = 1;
-    dns_message.header.ANCOUNT = 1;
+    dns_message.header.QDCOUNT = uint16_t ((buffer[4] << 8) | buffer[5]);
+    dns_message.header.ANCOUNT = dns_message.header.QDCOUNT;
     dns_message.header.NSCOUNT = 0;
     dns_message.header.ARCOUNT = 0;
 
-    std::string first_domain = "codecrafters";
-    int index{0};
-    dns_message.question.NAME[index++] = (uint8_t)first_domain.size();
-    for(char c : first_domain) {
-        dns_message.question.NAME[index] = c;
-        index++;
-    }
-
-    std::string second_domain = "io";
-    dns_message.question.NAME[index++] = (uint8_t)second_domain.size();
-    for(char c : second_domain) {
-        dns_message.question.NAME[index] = c;
-        index++;
-    }
-    dns_message.question.NAME[index] = 0;
-    
     dns_message.question.CLASS = 1;
     dns_message.question.TYPE = 1;
 
-    std::copy(dns_message.question.NAME, dns_message.question.NAME + sizeof(dns_message.question.NAME), dns_message.answer.NAME);
     dns_message.answer.TYPE = 1;
     dns_message.answer.CLASS = 1;
     dns_message.answer.TTL = 60;
     dns_message.answer.RDLENGTH = 4;
     dns_message.answer.RDATA = 8888;
     
-    dns_message.to_network_order();
+    //dns_message.to_network_order();
     return dns_message;
 }
 
@@ -117,8 +100,23 @@ int main() {
         // Create the response
         DNS_Message response = create_response(buffer);
 
-        uint8_t responseBuffer[sizeof(response)];
-        std::copy((const char*) &response, (const char*) &response + sizeof(response), responseBuffer);
+        int index{12}, i{0}, j{0};
+        char labels [256];
+        while(j < response.header.QDCOUNT) {
+            while(buffer[index] != '\x00') {
+                labels[i++] = buffer[index++];
+            }
+            labels[i++] = 0;
+            j++;
+        }
+
+        response.to_network_order();
+        uint8_t responseBuffer[sizeof(response) + 2*i];
+        std::copy((const char*) &response.header, (const char*) &response.header + sizeof(response.header), responseBuffer);
+        std::copy((const char*) &labels, (const char*) &labels + i, responseBuffer + sizeof(response.header));
+        std::copy((const char*) &response.question, (const char*) &response.question + sizeof(response.question), responseBuffer + sizeof(response.header) + i);
+        std::copy((const char*) &labels, (const char*) &labels + i,  responseBuffer + sizeof(response.header) + i + sizeof(response.question));
+        std::copy((const char*) &response.answer, (const char*) &response.answer + sizeof(response.answer), responseBuffer + sizeof(response.header) + 2* i + sizeof(response.question));
         // TODO: find out why copying the ID using the above method is wrong and the below method is correct
         std::copy(buffer, buffer + 2, responseBuffer);
 

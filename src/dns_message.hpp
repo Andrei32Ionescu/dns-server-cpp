@@ -17,7 +17,7 @@ public:
 
 class __attribute__((packed)) DNS_Message_Question {
 public:
-    u_int8_t NAME[17];
+    //u_int8_t NAME[17];
     uint16_t TYPE;
     uint16_t CLASS;
     DNS_Message_Question();
@@ -26,7 +26,7 @@ public:
 
 class __attribute__((packed)) DNS_Message_Answer {
 public:
-    u_int8_t NAME[17];
+    //u_int8_t NAME[17];
     uint16_t TYPE;
     u_int16_t CLASS;
     u_int32_t TTL;
