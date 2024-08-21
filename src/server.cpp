@@ -14,8 +14,8 @@ enum FLAGS {
     RD_FLAG = (1 << 8),
 };
 
-DNS_Message create_response(char buffer[]) {
-    uint16_t header_ID = uint16_t ((uint16_t (buffer[0] << 8) | buffer[1]));
+DNS_Message create_response(uint8_t buffer[]) {
+    uint16_t header_ID = uint16_t ((buffer[0] << 8) | buffer[1]);
     uint16_t request_flags = uint16_t ((buffer[2] << 8) | buffer[3]);
     uint16_t opcode = (request_flags << 1) >> 12;
     uint16_t response_flag = QR_FLAG | (opcode << 11);
@@ -35,16 +35,23 @@ DNS_Message create_response(char buffer[]) {
     dns_message.header.NSCOUNT = 0;
     dns_message.header.ARCOUNT = 0;
 
-    dns_message.question.CLASS = 1;
-    dns_message.question.TYPE = 1;
+    for(int i = 0; i < dns_message.header.QDCOUNT; i++) {
+        DNS_Message_Question* question = new DNS_Message_Question();
+        question -> CLASS = 1;
+        question -> TYPE = 1;
+        dns_message.questions.push_back(*question);
+    }
 
-    dns_message.answer.TYPE = 1;
-    dns_message.answer.CLASS = 1;
-    dns_message.answer.TTL = 60;
-    dns_message.answer.RDLENGTH = 4;
-    dns_message.answer.RDATA = 8888;
-    
-    //dns_message.to_network_order();
+    for(int i = 0; i < dns_message.header.ANCOUNT; i++) {
+        DNS_Message_Answer* answer = new DNS_Message_Answer();
+        answer -> CLASS = 1;
+        answer -> TYPE = 1;
+        answer -> TTL = 60;
+        answer -> RDLENGTH = 4;
+        answer -> RDATA = 0x08080808;
+        dns_message.answers.push_back(*answer);
+    }
+
     return dns_message;
 }
 
@@ -83,7 +90,7 @@ int main() {
     }
 
     int bytesRead;
-    char buffer[512];
+    uint8_t buffer[512];
     socklen_t clientAddrLen = sizeof(clientAddress);
 
     while (true) {
@@ -99,26 +106,66 @@ int main() {
 
         // Create the response
         DNS_Message response = create_response(buffer);
+        int question_number = response.header.QDCOUNT;
+        response.to_network_order();
+        int index{12};
+        for(int i = 0; i < question_number; i++) {
+            std::vector<uint8_t>* label = new std::vector<uint8_t>;
 
-        int index{12}, i{0}, j{0};
-        char labels [256];
-        while(j < response.header.QDCOUNT) {
             while(buffer[index] != '\x00') {
-                labels[i++] = buffer[index++];
+                uint8_t first_two_bits = buffer[index] >> 6;
+                uint16_t address = index;
+                if(first_two_bits == 0b00000011) {
+                    while(first_two_bits == 0b00000011) {
+                        address = (buffer[address] << 8 | buffer[address + 1]) << 2;
+                        address = address >> 2;
+                        first_two_bits = buffer[address] >> 6;
+                    }
+
+                    while(buffer[address] != '\x00') {
+                        label -> push_back(buffer[address++]);
+                    }
+                    index++;
+                    break;
+                }
+                else {
+                    label -> push_back(buffer[index++]);
+                }
             }
-            labels[i++] = 0;
-            j++;
+
+            label -> push_back(0);
+            index += 5;
+
+            response.labels.push_back(*label);
         }
 
-        response.to_network_order();
-        uint8_t responseBuffer[sizeof(response) + 2*i];
+        // Calculate response size
+        int response_size{0};
+        response_size += sizeof(response.header);
+        for(int i = 0; i < question_number; i++) {
+            response_size += sizeof(response.questions[i]);
+            response_size += sizeof(response.answers[i]);
+            response_size += 2 * response.labels[i].size();
+        }
+        
+        // Create and populate the response buffer 
+        uint8_t responseBuffer[response_size];
         std::copy((const char*) &response.header, (const char*) &response.header + sizeof(response.header), responseBuffer);
-        std::copy((const char*) &labels, (const char*) &labels + i, responseBuffer + sizeof(response.header));
-        std::copy((const char*) &response.question, (const char*) &response.question + sizeof(response.question), responseBuffer + sizeof(response.header) + i);
-        std::copy((const char*) &labels, (const char*) &labels + i,  responseBuffer + sizeof(response.header) + i + sizeof(response.question));
-        std::copy((const char*) &response.answer, (const char*) &response.answer + sizeof(response.answer), responseBuffer + sizeof(response.header) + 2* i + sizeof(response.question));
-        // TODO: find out why copying the ID using the above method is wrong and the below method is correct
-        std::copy(buffer, buffer + 2, responseBuffer);
+        size_t curr_index = sizeof(response.header);
+
+        for(int i = 0; i < question_number; i++) {
+            std::copy(response.labels[i].begin(), response.labels[i].end(), responseBuffer + curr_index);
+            curr_index += response.labels[i].size();
+            std::copy((const char*) &response.questions[i], (const char*) &response.questions[i] + sizeof(response.questions[i]), responseBuffer + curr_index);
+            curr_index += sizeof(response.questions[i]);      
+        }
+
+        for(int i = 0; i < question_number; i++) {
+            std::copy(response.labels[i].begin(), response.labels[i].end(), responseBuffer + curr_index);
+            curr_index += response.labels[i].size();   
+            std::copy((const char*) &response.answers[i], (const char*) &response.answers[i] + sizeof(response.answers[i]), responseBuffer + curr_index);
+            curr_index += sizeof(response.answers[i]);
+        }
 
         // Send response
         if (sendto(udpSocket, &responseBuffer, sizeof(responseBuffer), 0, reinterpret_cast<struct sockaddr*>(&clientAddress), sizeof(clientAddress)) == -1) {

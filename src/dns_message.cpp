@@ -9,8 +9,9 @@ DNS_Message_Answer::DNS_Message_Answer() {}
 
 DNS_Message::DNS_Message() {
     DNS_Message_Header header;
-    DNS_Message_Question question;
-    DNS_Message_Answer answer;
+    std::vector<DNS_Message_Question> questions;
+    std::vector<DNS_Message_Answer> answers;
+    std::vector<std::vector<uint8_t>> labels;
 }
 
 void DNS_Message_Header::to_network_order() {
@@ -37,6 +38,12 @@ void DNS_Message_Answer::to_network_order() {
 
 void DNS_Message::to_network_order() {
     header.to_network_order();
-    question.to_network_order();
-    answer.to_network_order();
+
+    for(int i = 0; i < questions.size(); i++) {
+        questions[i].to_network_order();
+    }
+    
+     for(int i = 0; i < answers.size(); i++) {
+        answers[i].to_network_order();
+    }
 }

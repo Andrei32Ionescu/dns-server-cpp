@@ -17,7 +17,6 @@ public:
 
 class __attribute__((packed)) DNS_Message_Question {
 public:
-    //u_int8_t NAME[17];
     uint16_t TYPE;
     uint16_t CLASS;
     DNS_Message_Question();
@@ -26,21 +25,21 @@ public:
 
 class __attribute__((packed)) DNS_Message_Answer {
 public:
-    //u_int8_t NAME[17];
     uint16_t TYPE;
-    u_int16_t CLASS;
-    u_int32_t TTL;
+    uint16_t CLASS;
+    uint32_t TTL;
     uint16_t RDLENGTH;
-    u_int32_t RDATA;
+    uint32_t RDATA;
     DNS_Message_Answer();
     void to_network_order();
 };
 
-class __attribute__((packed)) DNS_Message {
+class DNS_Message {
 public:
     DNS_Message_Header header;
-    DNS_Message_Question question;
-    DNS_Message_Answer answer;
+    std::vector<DNS_Message_Question> questions;
+    std::vector<DNS_Message_Answer> answers;
+    std::vector<std::vector<uint8_t>> labels;
     DNS_Message();
     void to_network_order();
 };
