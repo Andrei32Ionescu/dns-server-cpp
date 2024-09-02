@@ -12,7 +12,7 @@ public:
     uint16_t NSCOUNT;
     uint16_t ARCOUNT;
 
-    DNS_Message_Header();
+    DNS_Message_Header(uint16_t ID, uint16_t FLAGS, uint16_t QDCOUNT, uint16_t ANCOUNT, uint16_t NSCOUNT, uint16_t ARCOUNT);
     void to_network_order();
 };
 
@@ -20,7 +20,7 @@ class __attribute__((packed)) DNS_Message_Question {
 public:
     uint16_t TYPE;
     uint16_t CLASS;
-    DNS_Message_Question();
+    DNS_Message_Question(uint16_t TYPE, uint16_t CLASS);
     void to_network_order();
 };
 
@@ -31,7 +31,7 @@ public:
     uint32_t TTL;
     uint16_t RDLENGTH;
     uint32_t RDATA;
-    DNS_Message_Answer();
+    DNS_Message_Answer(uint16_t TYPE, uint16_t CLASS, uint32_t TTL, uint16_t RDLENGTH, uint32_t RDATA);
     void to_network_order();
 };
 
@@ -41,6 +41,9 @@ public:
     std::vector<std::unique_ptr<DNS_Message_Question>> questions;
     std::vector<std::unique_ptr<DNS_Message_Answer>> answers;
     std::vector<std::unique_ptr<std::vector<uint8_t>>> labels;
-    DNS_Message();
+    DNS_Message(DNS_Message_Header header);
     void to_network_order();
+    void create_response_labels(int question_number, uint8_t buffer[]);
 };
+
+DNS_Message create_response(uint8_t buffer[]);

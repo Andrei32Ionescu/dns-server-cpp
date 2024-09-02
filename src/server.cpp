@@ -6,6 +6,7 @@
 #include <string>
 #include <bitset>
 #include <arpa/inet.h>
+#include "server_init.hpp"
 #include "dns_message.hpp"
 
 enum FLAGS {
@@ -15,46 +16,7 @@ enum FLAGS {
     RD_FLAG = (1 << 8),
 };
 
-DNS_Message create_response(uint8_t buffer[]) {
-    uint16_t header_ID = uint16_t ((buffer[0] << 8) | buffer[1]);
-    uint16_t request_flags = uint16_t ((buffer[2] << 8) | buffer[3]);
-    uint16_t opcode = (request_flags << 1) >> 12;
-    uint16_t response_flag = QR_FLAG | (opcode << 11);
-    
-    if(request_flags & RD_FLAG) {
-        response_flag |= RD_FLAG;
-    }   
-    if(opcode != 0) {
-        response_flag = response_flag | RCODE_FLAG;
-    }
-
-    DNS_Message dns_message;
-    dns_message.header.ID = header_ID;
-    dns_message.header.FLAGS = response_flag;
-    dns_message.header.QDCOUNT = uint16_t ((buffer[4] << 8) | buffer[5]);
-    dns_message.header.ANCOUNT = dns_message.header.QDCOUNT;
-    dns_message.header.NSCOUNT = 0;
-    dns_message.header.ARCOUNT = 0;
-
-    for(int i = 0; i < dns_message.header.QDCOUNT; i++) {
-        dns_message.questions.push_back(std::make_unique<DNS_Message_Question>());
-        dns_message.questions.back()-> CLASS = 1;
-        dns_message.questions.back()-> TYPE = 1;
-    }
-
-    for(int i = 0; i < dns_message.header.ANCOUNT; i++) {
-        dns_message.answers.push_back(std::make_unique<DNS_Message_Answer>());
-        dns_message.answers.back()-> CLASS = 1;
-        dns_message.answers.back()-> TYPE = 1;
-        dns_message.answers.back()-> TTL = 60;
-        dns_message.answers.back()-> RDLENGTH = 4;
-        dns_message.answers.back()-> RDATA = 0x08080808;
-    }
-
-    return dns_message;
-}
-
-void query_resolver(int resolver_socket, sockaddr_in resolver_addr, DNS_Message& response, int question_index) {
+void query_resolver_server(int resolver_socket, sockaddr_in resolver_addr, DNS_Message& response, int question_index) {
     DNS_Message_Header query_header = response.header;
     query_header.ANCOUNT = 0;
     query_header.QDCOUNT = htons(1);
@@ -117,31 +79,15 @@ int main(int argc, char** argv) {
         }
     }
 
-    int udpSocket;
+    // First element of the pair is the code returned during server creation
+    // Second element of the pair is the resulting socket file descriptor
+    std::pair<int, int> server_status = create_server(2053);
+    if(server_status.first != 0) {
+        std::cerr<< "Server creation failed!\n";
+        return server_status.first;
+    }
+    int udpSocket = server_status.second;
     struct sockaddr_in clientAddress;
-
-    udpSocket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (udpSocket == -1) {
-        std::cerr << "Socket creation failed: " << strerror(errno) << "..." << std::endl;
-        return 1;
-    }
-
-    // Ensures that 'Address already in use' errors are not encountered during testing
-    int reuse = 1;
-    if (setsockopt(udpSocket, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
-        std::cerr << "SO_REUSEPORT failed: " << strerror(errno) << std::endl;
-        return 1;
-    }
-
-    sockaddr_in serv_addr = { .sin_family = AF_INET,
-                                .sin_port = htons(2053),
-                                .sin_addr = { htonl(INADDR_ANY) },
-                            };
-
-    if (bind(udpSocket, reinterpret_cast<struct sockaddr*>(&serv_addr), sizeof(serv_addr)) != 0) {
-        std::cerr << "Bind failed: " << strerror(errno) << std::endl;
-        return 1;
-    }
 
     sockaddr_in resolver_addr;
     int resolver_socket;
@@ -180,40 +126,12 @@ int main(int argc, char** argv) {
         DNS_Message response = create_response(buffer);
         int question_number = response.header.QDCOUNT;
         response.to_network_order();
-        int index{12};
-        for(int i = 0; i < question_number; i++) {
-            response.labels.push_back(std::make_unique<std::vector<uint8_t>>());
-
-            while(buffer[index] != '\x00') {
-                uint8_t first_two_bits = buffer[index] >> 6;
-                uint16_t address = index;
-                if(first_two_bits == 0b00000011) {
-                    while(first_two_bits == 0b00000011) {
-                        address = (buffer[address] << 8 | buffer[address + 1]) << 2;
-                        address = address >> 2;
-                        first_two_bits = buffer[address] >> 6;
-                    }
-
-                    while(buffer[address] != '\x00') {
-                        response.labels.back() -> push_back(buffer[address++]);
-                    }
-                    index++;
-                    break;
-                }
-                else {
-                    response.labels.back() -> push_back(buffer[index++]);
-                }
-            }
-
-            response.labels.back() -> push_back(0);
-            index += 5;
-
-        }
+        response.create_response_labels(question_number, buffer);
 
         // Forward message to resolver if possible
         int question_index{0};
         while(!resolver_ip.empty() && question_index < question_number) {
-            query_resolver(resolver_socket, resolver_addr, response, question_index);
+            query_resolver_server(resolver_socket, resolver_addr, response, question_index);
             question_index++;
         }
 
