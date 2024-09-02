@@ -37,20 +37,18 @@ DNS_Message create_response(uint8_t buffer[]) {
     dns_message.header.ARCOUNT = 0;
 
     for(int i = 0; i < dns_message.header.QDCOUNT; i++) {
-        DNS_Message_Question* question = new DNS_Message_Question();
-        question -> CLASS = 1;
-        question -> TYPE = 1;
-        dns_message.questions.push_back(*question);
+        dns_message.questions.push_back(std::make_unique<DNS_Message_Question>());
+        dns_message.questions.back()-> CLASS = 1;
+        dns_message.questions.back()-> TYPE = 1;
     }
 
     for(int i = 0; i < dns_message.header.ANCOUNT; i++) {
-        DNS_Message_Answer* answer = new DNS_Message_Answer();
-        answer -> CLASS = 1;
-        answer -> TYPE = 1;
-        answer -> TTL = 60;
-        answer -> RDLENGTH = 4;
-        answer -> RDATA = 0x08080808;
-        dns_message.answers.push_back(*answer);
+        dns_message.answers.push_back(std::make_unique<DNS_Message_Answer>());
+        dns_message.answers.back()-> CLASS = 1;
+        dns_message.answers.back()-> TYPE = 1;
+        dns_message.answers.back()-> TTL = 60;
+        dns_message.answers.back()-> RDLENGTH = 4;
+        dns_message.answers.back()-> RDATA = 0x08080808;
     }
 
     return dns_message;
@@ -64,17 +62,17 @@ void query_resolver(int resolver_socket, sockaddr_in resolver_addr, DNS_Message&
 
     // Calculate response size
     int response_size = sizeof(query_header);
-    response_size += sizeof(response.questions[question_index]);
-    response_size += response.labels[question_index].size();
+    response_size += sizeof(*response.questions[question_index]);
+    response_size += response.labels[question_index] -> size();
 
     // Create and populate the buffer 
     uint8_t responseBuffer[response_size];
     std::copy((const char*) &query_header, (const char*) &query_header + sizeof(response.header), responseBuffer);
     size_t curr_index = sizeof(query_header);
-    std::copy(response.labels[question_index].begin(), response.labels[question_index].end(), responseBuffer + curr_index);
-    curr_index += response.labels[question_index].size();
-    std::copy((const char*) &response.questions[question_index], (const char*) &response.questions[question_index] + sizeof(response.questions[question_index]), responseBuffer + curr_index);
-    curr_index += sizeof(response.questions[question_index]);
+    std::copy(response.labels[question_index] -> begin(), response.labels[question_index] -> end(), responseBuffer + curr_index);
+    curr_index += response.labels[question_index] -> size();
+    std::copy((const char*) response.questions[question_index].get(), (const char*) response.questions[question_index].get() + sizeof(response.questions[question_index]), responseBuffer + curr_index);
+    curr_index += sizeof(*response.questions[question_index]);
 
     // Send response
     if (sendto(resolver_socket, &responseBuffer, sizeof(responseBuffer), 0, reinterpret_cast<struct sockaddr*>(&resolver_addr), sizeof(resolver_addr)) == -1) {
@@ -91,11 +89,11 @@ void query_resolver(int resolver_socket, sockaddr_in resolver_addr, DNS_Message&
         perror("Error receiving data");
     }
 
-    if (buffer[curr_index + response.labels[question_index].size()] == 0 && 
-    buffer[curr_index + response.labels[question_index].size() + 1] == 1 &&
-    buffer[curr_index + response.labels[question_index].size() + 2] == 0 &&
-    buffer[curr_index + response.labels[question_index].size() + 3] == 1) {
-        std::memcpy(&response.answers[question_index], buffer + curr_index + response.labels[question_index].size(), sizeof(response.answers[question_index]));
+    if (buffer[curr_index + response.labels[question_index] -> size()] == 0 && 
+    buffer[curr_index + response.labels[question_index] -> size() + 1] == 1 &&
+    buffer[curr_index + response.labels[question_index] -> size() + 2] == 0 &&
+    buffer[curr_index + response.labels[question_index] -> size() + 3] == 1) {
+        std::memcpy(response.answers[question_index].get(), buffer + curr_index + response.labels[question_index] -> size(), sizeof(*response.answers[question_index]));
     }
 }
 
@@ -184,7 +182,7 @@ int main(int argc, char** argv) {
         response.to_network_order();
         int index{12};
         for(int i = 0; i < question_number; i++) {
-            std::vector<uint8_t>* label = new std::vector<uint8_t>;
+            response.labels.push_back(std::make_unique<std::vector<uint8_t>>());
 
             while(buffer[index] != '\x00') {
                 uint8_t first_two_bits = buffer[index] >> 6;
@@ -197,20 +195,19 @@ int main(int argc, char** argv) {
                     }
 
                     while(buffer[address] != '\x00') {
-                        label -> push_back(buffer[address++]);
+                        response.labels.back() -> push_back(buffer[address++]);
                     }
                     index++;
                     break;
                 }
                 else {
-                    label -> push_back(buffer[index++]);
+                    response.labels.back() -> push_back(buffer[index++]);
                 }
             }
 
-            label -> push_back(0);
+            response.labels.back() -> push_back(0);
             index += 5;
 
-            response.labels.push_back(*label);
         }
 
         // Forward message to resolver if possible
@@ -224,9 +221,9 @@ int main(int argc, char** argv) {
         int response_size{0};
         response_size += sizeof(response.header);
         for(int i = 0; i < question_number; i++) {
-            response_size += sizeof(response.questions[i]);
-            response_size += sizeof(response.answers[i]);
-            response_size += 2 * response.labels[i].size();
+            response_size += sizeof(*response.questions[i]);
+            response_size += sizeof(*response.answers[i]);
+            response_size += 2 * response.labels[i] -> size();
         }
         
         // Create and populate the response buffer 
@@ -235,17 +232,17 @@ int main(int argc, char** argv) {
         size_t curr_index = sizeof(response.header);
 
         for(int i = 0; i < question_number; i++) {
-            std::copy(response.labels[i].begin(), response.labels[i].end(), responseBuffer + curr_index);
-            curr_index += response.labels[i].size();
-            std::copy((const char*) &response.questions[i], (const char*) &response.questions[i] + sizeof(response.questions[i]), responseBuffer + curr_index);
-            curr_index += sizeof(response.questions[i]);      
+            std::copy(response.labels[i] -> begin(), response.labels[i] -> end(), responseBuffer + curr_index);
+            curr_index += response.labels[i] -> size();
+            std::copy((const char*) response.questions[i].get(), (const char*) response.questions[i].get() + sizeof(*response.questions[i]), responseBuffer + curr_index);
+            curr_index += sizeof(*response.questions[i]);      
         }
 
         for(int i = 0; i < question_number; i++) {
-            std::copy(response.labels[i].begin(), response.labels[i].end(), responseBuffer + curr_index);
-            curr_index += response.labels[i].size();   
-            std::copy((const char*) &response.answers[i], (const char*) &response.answers[i] + sizeof(response.answers[i]), responseBuffer + curr_index);
-            curr_index += sizeof(response.answers[i]);
+            std::copy(response.labels[i] -> begin(), response.labels[i] -> end(), responseBuffer + curr_index);
+            curr_index += response.labels[i] -> size();   
+            std::copy((const char*) response.answers[i].get(), (const char*) response.answers[i].get() + sizeof(*response.answers[i]), responseBuffer + curr_index);
+            curr_index += sizeof(*response.answers[i]);
         }
 
         // Send response
@@ -255,6 +252,7 @@ int main(int argc, char** argv) {
     }
 
     close(udpSocket);
+    close(resolver_socket);
 
     return 0;
 }

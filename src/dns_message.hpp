@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+#include <memory>
 
 class __attribute__((packed)) DNS_Message_Header {
 public:
@@ -37,9 +38,9 @@ public:
 class DNS_Message {
 public:
     DNS_Message_Header header;
-    std::vector<DNS_Message_Question> questions;
-    std::vector<DNS_Message_Answer> answers;
-    std::vector<std::vector<uint8_t>> labels;
+    std::vector<std::unique_ptr<DNS_Message_Question>> questions;
+    std::vector<std::unique_ptr<DNS_Message_Answer>> answers;
+    std::vector<std::unique_ptr<std::vector<uint8_t>>> labels;
     DNS_Message();
     void to_network_order();
 };
