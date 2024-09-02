@@ -30,3 +30,20 @@ std::pair<int, int> create_server(int port_number) {
 
     return {0, udpSocket};
 }
+
+void setup_resolver_socket(Resolver_Info& resolver) {
+    if (resolver.ip.empty()) return;
+
+    resolver.socket = socket(AF_INET, SOCK_DGRAM, 0);
+    if (resolver.socket == -1) {
+        throw std::runtime_error("Socket creation failed: " + std::string(strerror(errno)));
+    }
+
+    resolver.addr = {
+        .sin_family = AF_INET,
+        .sin_port = htons(std::stoi(resolver.port)),
+    };
+    if (inet_pton(AF_INET, resolver.ip.c_str(), &resolver.addr.sin_addr) <= 0) {
+        throw std::runtime_error("Invalid resolver IP address");
+    }
+}

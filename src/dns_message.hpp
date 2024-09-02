@@ -3,6 +3,14 @@
 #include <vector>
 #include <memory>
 
+enum FLAGS {
+    QR_FLAG = (1 << 15),
+    OPCODE_FLAG = (15 << 11),
+    RCODE_FLAG = (4),
+    RD_FLAG = (1 << 8),
+};
+
+
 class __attribute__((packed)) DNS_Message_Header {
 public:
     uint16_t ID;

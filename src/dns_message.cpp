@@ -1,12 +1,9 @@
+#include <iostream>
+#include <arpa/inet.h>
+#include <cstring>
+#include <bitset>
 #include <arpa/inet.h>
 #include "dns_message.hpp"
-
-enum FLAGS {
-    QR_FLAG = (1 << 15),
-    OPCODE_FLAG = (15 << 11),
-    RCODE_FLAG = (4),
-    RD_FLAG = (1 << 8),
-};
 
 DNS_Message_Header::DNS_Message_Header(uint16_t ID, uint16_t FLAGS, uint16_t QDCOUNT, uint16_t ANCOUNT, uint16_t NSCOUNT, uint16_t ARCOUNT) : 
 ID(ID), FLAGS(FLAGS), QDCOUNT(QDCOUNT), ANCOUNT(ANCOUNT), NSCOUNT(NSCOUNT), ARCOUNT(ARCOUNT) {}
@@ -51,7 +48,7 @@ void DNS_Message::to_network_order() {
         questions[i] -> to_network_order();
     }
     
-     for(int i = 0; i < answers.size(); i++) {
+    for(int i = 0; i < answers.size(); i++) {
         answers[i] -> to_network_order();
     }
 }
